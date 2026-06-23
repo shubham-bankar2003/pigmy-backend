@@ -128,7 +128,7 @@ router.post('/verify-otp', async (req, res) => {
 
         const user = result.rows[0];
 
-        if (user.otp !== otp) {
+        if (String(user.otp).trim() !== String(otp).trim()){
 
             return res.status(400).json({
                 success: false,
