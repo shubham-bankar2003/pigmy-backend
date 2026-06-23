@@ -103,10 +103,10 @@ router.post('/verify-otp', async (req, res) => {
 
     try {
 
-        const {
-            mobile_number,
-            otp
-        } = req.body;
+        const { mobile_number, otp } = req.body;
+
+        console.log("Entered Mobile:", mobile_number);
+        console.log("Entered OTP:", otp);
 
         const result = await pool.query(
             `
@@ -128,7 +128,14 @@ router.post('/verify-otp', async (req, res) => {
 
         const user = result.rows[0];
 
-        if (String(user.otp).trim() !== String(otp).trim()){
+        console.log("DB User:", user);
+        console.log("DB OTP:", user.otp);
+        console.log("DB OTP Type:", typeof user.otp);
+        console.log("Entered OTP Type:", typeof otp);
+
+        if (String(user.otp).trim() !== String(otp).trim()) {
+
+            console.log("OTP MISMATCH");
 
             return res.status(400).json({
                 success: false,
@@ -137,23 +144,12 @@ router.post('/verify-otp', async (req, res) => {
 
         }
 
-        if (
-            new Date(user.otp_expiry) <
-            new Date()
-        ) {
-
-            return res.status(400).json({
-                success: false,
-                message: 'OTP Expired'
-            });
-
-        }
+        console.log("OTP MATCHED");
 
         const token = jwt.sign(
             {
                 userId: user.id,
-                mobileNumber:
-                    user.mobile_number
+                mobileNumber: user.mobile_number
             },
             process.env.JWT_SECRET,
             {
