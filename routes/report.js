@@ -26,8 +26,7 @@ async (req, res) => {
             WHERE
                 CAST(p.collection_date AS DATE) = $1
                 AND p.user_id = $2
-            ORDER BY
-                c.customer_name
+            ORDER BY c.customer_name
             `,
             [
                 date,
@@ -77,8 +76,7 @@ async (req, res) => {
             WHERE
                 CAST(p.collection_date AS DATE) = $1
                 AND p.user_id = $2
-            ORDER BY
-                c.customer_name
+            ORDER BY c.customer_name
             `,
             [
                 date,
@@ -86,8 +84,7 @@ async (req, res) => {
             ]
         );
 
-        const workbook =
-            new ExcelJS.Workbook();
+        const workbook = new ExcelJS.Workbook();
 
         const worksheet =
             workbook.addWorksheet(
@@ -96,24 +93,18 @@ async (req, res) => {
 
         worksheet.columns = [
             {
-                header:
-                    'Customer Name',
-                key:
-                    'customer_name',
+                header: 'Customer Name',
+                key: 'customer_name',
                 width: 30
             },
             {
-                header:
-                    'Amount',
-                key:
-                    'amount',
+                header: 'Amount',
+                key: 'amount',
                 width: 15
             },
             {
-                header:
-                    'Payment Mode',
-                key:
-                    'payment_mode',
+                header: 'Payment Mode',
+                key: 'payment_mode',
                 width: 20
             }
         ];
@@ -122,21 +113,16 @@ async (req, res) => {
 
         result.rows.forEach(row => {
 
-            total += Number(
-                row.amount
-            );
+            total += Number(row.amount);
 
-            worksheet.addRow(
-                row
-            );
+            worksheet.addRow(row);
 
         });
 
         worksheet.addRow([]);
 
         worksheet.addRow({
-            customer_name:
-                'TOTAL',
+            customer_name: 'TOTAL',
             amount: total
         });
 
@@ -150,9 +136,7 @@ async (req, res) => {
             `attachment; filename=Pigmy_Report_${date}.xlsx`
         );
 
-        await workbook.xlsx.write(
-            res
-        );
+        await workbook.xlsx.write(res);
 
         res.end();
 
@@ -188,8 +172,7 @@ async (req, res) => {
 
             return res.status(400).json({
                 success: false,
-                message:
-                    'Please Select Date'
+                message: 'Please Select Date'
             });
 
         }
@@ -198,8 +181,7 @@ async (req, res) => {
 
             return res.status(400).json({
                 success: false,
-                message:
-                    'Please Enter WhatsApp Number'
+                message: 'Please Enter WhatsApp Number'
             });
 
         }
@@ -216,8 +198,7 @@ async (req, res) => {
             WHERE
                 CAST(p.collection_date AS DATE) = $1
                 AND p.user_id = $2
-            ORDER BY
-                c.customer_name
+            ORDER BY c.customer_name
             `,
             [
                 date,
@@ -236,9 +217,7 @@ async (req, res) => {
                 index
             ) => {
 
-                total += Number(
-                    row.amount
-                );
+                total += Number(row.amount);
 
                 message +=
                     `${index + 1}. ${row.customer_name} - ${row.amount} (${row.payment_mode})\n`;
@@ -251,8 +230,7 @@ async (req, res) => {
 
         res.json({
             success: true,
-            whatsappNumber:
-                mobile,
+            whatsappNumber: mobile,
             message
         });
 
