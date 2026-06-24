@@ -150,7 +150,7 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
     }
 });
 
-// 3. SEND WHATSAPP (Unified Text Layout)
+
 router.post('/send-whatsapp', authMiddleware, async (req, res) => {
     try {
         const { date, mobile } = req.body;
@@ -176,50 +176,49 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
             [date, req.userId]
         );
 
-        // Group data to clean up layout spaces
+        // Group data into single entries per customer
         const groupedRows = groupDataByCustomer(result.rows);
 
         let grandCash = 0;
         let grandOnline = 0;
         let grandTotal = 0;
 
-        // Clean, structured text matrix layout that uses explicit string character padding inside code blocks.
-        // This ensures columns align perfectly on mobile WhatsApp screens without text wrapping distortion.
         let textBlock = `📊 *CONSOLIDATED PIGMY REPORT*\n`;
         textBlock += `📅 *Date:* ${date}\n\n`;
         textBlock += "```\n";
-        textBlock += "---------------------------------\n";
-        textBlock += "Cust Name      | Cash  | Online \n";
-        textBlock += "---------------------------------\n";
+        textBlock += "----------------------------------------\n";
+        textBlock += "Customer Name   | Cash  | Online | Total\n";
+        textBlock += "----------------------------------------\n";
 
         groupedRows.forEach((row) => {
             grandCash += row.cashAmount;
             grandOnline += row.onlineAmount;
             grandTotal += row.totalAmount;
 
-            let name = row.customer_name.substring(0, 14).padEnd(14, ' ');
+            // Strict column sizing: Name (15 chars), Cash (5 chars), Online (6 chars), Total (5 chars)
+            let name = row.customer_name.substring(0, 15).padEnd(15, ' ');
             let cash = row.cashAmount > 0 ? String(row.cashAmount).substring(0, 5) : '-';
             let online = row.onlineAmount > 0 ? String(row.onlineAmount).substring(0, 5) : '-';
+            let total = String(row.totalAmount).substring(0, 5);
             
             cash = cash.padEnd(5, ' ');
             online = online.padEnd(6, ' ');
+            total = total.padEnd(5, ' ');
 
-            textBlock += `${name} | ${cash} | ${online}\n`;
+            textBlock += `${name} | ${cash} | ${online} | ${total}\n`;
         });
 
-        textBlock += "---------------------------------\n";
-        let summaryLabel = "TOTALS".padEnd(14, ' ');
+        textBlock += "----------------------------------------\n";
+        let summaryLabel = "TOTALS".padEnd(15, ' ');
         let totalCashStr = String(grandCash).substring(0, 5).padEnd(5, ' ');
         let totalOnlineStr = String(grandOnline).substring(0, 5).padEnd(6, ' ');
+        let grandTotalStr = String(grandTotal).substring(0, 5).padEnd(5, ' ');
         
-        textBlock += `${summaryLabel} | ${totalCashStr} | ${totalOnlineStr}\n`;
-        textBlock += "---------------------------------\n";
+        textBlock += `${summaryLabel} | ${totalCashStr} | ${totalOnlineStr} | ${grandTotalStr}\n`;
+        textBlock += "----------------------------------------\n";
         textBlock += "```\n\n";
 
-        textBlock += `💰 *GRAND TOTAL:* ₹ ${grandTotal}\n`;
-        textBlock += `👥 *Total Customers:* ${groupedRows.length}\n`;
-        textBlock += `---------------------------------\n`;
-        textBlock += `_Generated automatically via Pigmy System._`;
+        textBlock += `👥 *Total Customers:* ${groupedRows.length}`;
 
         res.json({
             success: true,
