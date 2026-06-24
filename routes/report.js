@@ -33,7 +33,7 @@ const groupDataByCustomer = (rows) => {
     );
 };
 
-// 1. GET REPORT DATA (Unchanged)
+// 1. GET REPORT DATA
 router.get('/date/:date', authMiddleware, async (req, res) => {
     try {
         const date = req.params.date;
@@ -83,13 +83,11 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
             [date, req.userId]
         );
 
-        // Group data into single rows per customer
         const groupedRows = groupDataByCustomer(result.rows);
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Pigmy Consolidated Report');
 
-        // Layout matching your unified UI changes
         worksheet.columns = [
             { header: 'Customer Name', key: 'customer_name', width: 30 },
             { header: 'Cash Payment', key: 'cashAmount', width: 18 },
@@ -97,14 +95,12 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
             { header: 'Total Amount', key: 'totalAmount', width: 18 }
         ];
 
-        // Format the header row visually
         worksheet.getRow(1).font = { bold: true };
 
         let grandCash = 0;
         let grandOnline = 0;
         let grandTotal = 0;
 
-        // Add grouped rows
         groupedRows.forEach(row => {
             grandCash += row.cashAmount;
             grandOnline += row.onlineAmount;
@@ -118,10 +114,8 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
             });
         });
 
-        // Spacing spacer row
         worksheet.addRow([]);
 
-        // Footer Total Rows
         const summaryRow = worksheet.addRow({
             customer_name: `Summary Totals (${groupedRows.length} Customers)`,
             cashAmount: grandCash,
@@ -133,7 +127,7 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
         summaryRow.getCell('totalAmount').fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FFFFE0B2' } // Light Accent highlight background
+            fgColor: { argb: 'FFFFE0B2' }
         };
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -150,7 +144,7 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
     }
 });
 
-
+// 3. SEND WHATSAPP (Verified Balanced Monospace Table Layout)
 router.post('/send-whatsapp', authMiddleware, async (req, res) => {
     try {
         const { date, mobile } = req.body;
@@ -176,7 +170,6 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
             [date, req.userId]
         );
 
-        // Group data into single entries per customer
         const groupedRows = groupDataByCustomer(result.rows);
 
         let grandCash = 0;
@@ -195,11 +188,12 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
             grandOnline += row.onlineAmount;
             grandTotal += row.totalAmount;
 
-            // Strict column sizing: Name (15 chars), Cash (5 chars), Online (6 chars), Total (5 chars)
+            // Character Padding to match header lengths perfectly: 
+            // Name (15 chars), Cash (5 chars), Online (6 chars), Total (5 chars)
             let name = row.customer_name.substring(0, 15).padEnd(15, ' ');
-            let cash = row.cashAmount > 0 ? String(row.cashAmount).substring(0, 5) : '-';
-            let online = row.onlineAmount > 0 ? String(row.onlineAmount).substring(0, 5) : '-';
-            let total = String(row.totalAmount).substring(0, 5);
+            let cash = row.cashAmount > 0 ? String(row.cashAmount) : '-';
+            let online = row.onlineAmount > 0 ? String(row.onlineAmount) : '-';
+            let total = String(row.totalAmount);
             
             cash = cash.padEnd(5, ' ');
             online = online.padEnd(6, ' ');
@@ -210,9 +204,9 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
 
         textBlock += "----------------------------------------\n";
         let summaryLabel = "TOTALS".padEnd(15, ' ');
-        let totalCashStr = String(grandCash).substring(0, 5).padEnd(5, ' ');
-        let totalOnlineStr = String(grandOnline).substring(0, 5).padEnd(6, ' ');
-        let grandTotalStr = String(grandTotal).substring(0, 5).padEnd(5, ' ');
+        let totalCashStr = String(grandCash).padEnd(5, ' ');
+        let totalOnlineStr = String(grandOnline).padEnd(6, ' ');
+        let grandTotalStr = String(grandTotal).padEnd(5, ' ');
         
         textBlock += `${summaryLabel} | ${totalCashStr} | ${totalOnlineStr} | ${grandTotalStr}\n`;
         textBlock += "----------------------------------------\n";
@@ -234,5 +228,4 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
         });
     }
 });
-
 module.exports = router;
