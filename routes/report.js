@@ -4,7 +4,36 @@ const pool = require('../db');
 const ExcelJS = require('exceljs');
 const authMiddleware = require('../middleware/auth');
 
-// 1. GET REPORT DATA (Unchanged - separation handled on client side)
+// Helper function to group database results by customer name
+const groupDataByCustomer = (rows) => {
+    return Object.values(
+        rows.reduce((acc, row) => {
+            const name = row.customer_name;
+            const amount = Number(row.amount);
+            const isCash = row.payment_mode === 'Cash';
+
+            if (!acc[name]) {
+                acc[name] = {
+                    customer_name: name,
+                    cashAmount: 0,
+                    onlineAmount: 0,
+                    totalAmount: 0
+                };
+            }
+
+            if (isCash) {
+                acc[name].cashAmount += amount;
+            } else {
+                acc[name].onlineAmount += amount;
+            }
+            acc[name].totalAmount += amount;
+
+            return acc;
+        }, {})
+    );
+};
+
+// 1. GET REPORT DATA (Unchanged)
 router.get('/date/:date', authMiddleware, async (req, res) => {
     try {
         const date = req.params.date;
@@ -36,7 +65,7 @@ router.get('/date/:date', authMiddleware, async (req, res) => {
     }
 });
 
-// 2. EXPORT TO EXCEL (Separated into Cash and Online tables)
+// 2. EXPORT TO EXCEL (Unified Grouped Layout)
 router.get('/export/:date', authMiddleware, async (req, res) => {
     try {
         const date = req.params.date;
@@ -54,75 +83,61 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
             [date, req.userId]
         );
 
-        // Separate the datasets
-        const cashRows = result.rows.filter(row => row.payment_mode === 'Cash');
-        const onlineRows = result.rows.filter(row => row.payment_mode !== 'Cash');
+        // Group data into single rows per customer
+        const groupedRows = groupDataByCustomer(result.rows);
 
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Pigmy Split Report');
+        const worksheet = workbook.addWorksheet('Pigmy Consolidated Report');
 
-        // Define column structure
+        // Layout matching your unified UI changes
         worksheet.columns = [
             { header: 'Customer Name', key: 'customer_name', width: 30 },
-            { header: 'Amount', key: 'amount', width: 15 },
-            { header: 'Payment Mode', key: 'payment_mode', width: 20 }
+            { header: 'Cash Payment', key: 'cashAmount', width: 18 },
+            { header: 'Online Payment', key: 'onlineAmount', width: 18 },
+            { header: 'Total Amount', key: 'totalAmount', width: 18 }
         ];
 
-        // --- SECTION 1: CASH COLLECTIONS ---
-        worksheet.addRow(['💵 CASH COLLECTIONS']).font = { bold: true, size: 12 };
-        let cashTotal = 0;
-        cashRows.forEach(row => {
-            cashTotal += Number(row.amount);
-            worksheet.addRow(row);
+        // Format the header row visually
+        worksheet.getRow(1).font = { bold: true };
+
+        let grandCash = 0;
+        let grandOnline = 0;
+        let grandTotal = 0;
+
+        // Add grouped rows
+        groupedRows.forEach(row => {
+            grandCash += row.cashAmount;
+            grandOnline += row.onlineAmount;
+            grandTotal += row.totalAmount;
+
+            worksheet.addRow({
+                customer_name: row.customer_name,
+                cashAmount: row.cashAmount > 0 ? row.cashAmount : '-',
+                onlineAmount: row.onlineAmount > 0 ? row.onlineAmount : '-',
+                totalAmount: row.totalAmount
+            });
         });
-        
-        const cashSubtotalRow = worksheet.addRow({
-            customer_name: `CASH TOTAL (${cashRows.length} Recs)`,
-            amount: cashTotal
-        });
-        cashSubtotalRow.font = { bold: true };
-        
+
         // Spacing spacer row
         worksheet.addRow([]);
 
-        // --- SECTION 2: ONLINE COLLECTIONS ---
-        worksheet.addRow(['📱 ONLINE COLLECTIONS']).font = { bold: true, size: 12 };
-        let onlineTotal = 0;
-        onlineRows.forEach(row => {
-            onlineTotal += Number(row.amount);
-            worksheet.addRow(row);
+        // Footer Total Rows
+        const summaryRow = worksheet.addRow({
+            customer_name: `Summary Totals (${groupedRows.length} Customers)`,
+            cashAmount: grandCash,
+            onlineAmount: grandOnline,
+            totalAmount: grandTotal
         });
 
-        const onlineSubtotalRow = worksheet.addRow({
-            customer_name: `ONLINE TOTAL (${onlineRows.length} Recs)`,
-            amount: onlineTotal
-        });
-        onlineSubtotalRow.font = { bold: true };
-
-        // Spacing spacer rows
-        worksheet.addRow([]);
-        worksheet.addRow([]);
-
-        // --- SUMMARY SECTION: GRAND TOTALS ---
-        const totalRecordsRow = worksheet.addRow({
-            customer_name: 'TOTAL CONSOLIDATED ENTRIES',
-            amount: result.rows.length
-        });
-        totalRecordsRow.font = { italic: true };
-
-        const grandTotalRow = worksheet.addRow({
-            customer_name: 'GRAND TOTAL',
-            amount: cashTotal + onlineTotal
-        });
-        grandTotalRow.font = { bold: true, size: 13 };
-        grandTotalRow.getCell('amount').fill = {
+        summaryRow.font = { bold: true, size: 12 };
+        summaryRow.getCell('totalAmount').fill = {
             type: 'pattern',
             pattern: 'solid',
             fgColor: { argb: 'FFFFE0B2' } // Light Accent highlight background
         };
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=Pigmy_Report_${date}.xlsx`);
+        res.setHeader('Content-Disposition', `attachment; filename=Pigmy_Consolidated_Report_${date}.xlsx`);
 
         await workbook.xlsx.write(res);
         res.end();
@@ -135,7 +150,7 @@ router.get('/export/:date', authMiddleware, async (req, res) => {
     }
 });
 
-// 3. SEND WHATSAPP (Table Formatted Split Text Engine)
+// 3. SEND WHATSAPP (Unified Text Layout)
 router.post('/send-whatsapp', authMiddleware, async (req, res) => {
     try {
         const { date, mobile } = req.body;
@@ -161,57 +176,55 @@ router.post('/send-whatsapp', authMiddleware, async (req, res) => {
             [date, req.userId]
         );
 
-        const cashRows = result.rows.filter(row => row.payment_mode === 'Cash');
-        const onlineRows = result.rows.filter(row => row.payment_mode !== 'Cash');
+        // Group data to clean up layout spaces
+        const groupedRows = groupDataByCustomer(result.rows);
 
-        // Helper function to build structured text grid tables
-        const generateTableSegment = (title, items) => {
-            let total = 0;
-            let block = `*${title}*\n`;
-            block += "```\n";
-            block += "-----------------------------\n";
-            block += "Cust Name      | Amt  | Mode \n";
-            block += "-----------------------------\n";
+        let grandCash = 0;
+        let grandOnline = 0;
+        let grandTotal = 0;
 
-            items.forEach((row) => {
-                total += Number(row.amount);
-                let name = row.customer_name.substring(0, 14).padEnd(14, ' ');
-                let amt = String(row.amount).substring(0, 5).padEnd(5, ' ');
-                let mode = String(row.payment_mode).substring(0, 4).padEnd(4, ' ');
-                block += `${name} | ${amt} | ${mode}\n`;
-            });
+        // Clean, structured text matrix layout that uses explicit string character padding inside code blocks.
+        // This ensures columns align perfectly on mobile WhatsApp screens without text wrapping distortion.
+        let textBlock = `📊 *CONSOLIDATED PIGMY REPORT*\n`;
+        textBlock += `📅 *Date:* ${date}\n\n`;
+        textBlock += "```\n";
+        textBlock += "---------------------------------\n";
+        textBlock += "Cust Name      | Cash  | Online \n";
+        textBlock += "---------------------------------\n";
 
-            block += "-----------------------------\n";
-            let label = `TOTAL (${items.length})`.padEnd(14, ' ');
-            let totalStr = String(total).padEnd(5, ' ');
-            block += `${label} | ${totalStr} | -\n`;
-            block += "-----------------------------\n";
-            block += "```\n\n";
+        groupedRows.forEach((row) => {
+            grandCash += row.cashAmount;
+            grandOnline += row.onlineAmount;
+            grandTotal += row.totalAmount;
 
-            return { block, total };
-        };
+            let name = row.customer_name.substring(0, 14).padEnd(14, ' ');
+            let cash = row.cashAmount > 0 ? String(row.cashAmount).substring(0, 5) : '-';
+            let online = row.onlineAmount > 0 ? String(row.onlineAmount).substring(0, 5) : '-';
+            
+            cash = cash.padEnd(5, ' ');
+            online = online.padEnd(6, ' ');
 
-        // Header Metadata Title block
-        let finalMessage = `📊 *PIGMY SPLIT COLLECTION REPORT*\n📅 *Date:* ${date}\n\n`;
+            textBlock += `${name} | ${cash} | ${online}\n`;
+        });
 
-        // Generate segments dynamically
-        const cashSegment = generateTableSegment("💵 CASH SEGMENT", cashRows);
-        const onlineSegment = generateTableSegment("📱 ONLINE SEGMENT", onlineRows);
+        textBlock += "---------------------------------\n";
+        let summaryLabel = "TOTALS".padEnd(14, ' ');
+        let totalCashStr = String(grandCash).substring(0, 5).padEnd(5, ' ');
+        let totalOnlineStr = String(grandOnline).substring(0, 5).padEnd(6, ' ');
+        
+        textBlock += `${summaryLabel} | ${totalCashStr} | ${totalOnlineStr}\n`;
+        textBlock += "---------------------------------\n";
+        textBlock += "```\n\n";
 
-        // Build combined layout message stream
-        finalMessage += cashSegment.block;
-        finalMessage += onlineSegment.block;
-
-        // Footer Summary Block
-        finalMessage += `*=============================*\n`;
-        finalMessage += `📝 *Total Consolidated Records:* ${result.rows.length}\n`;
-        finalMessage += `💰 *Grand Total Collection:* ₹ ${cashSegment.total + onlineSegment.total}\n`;
-        finalMessage += `*=============================*`;
+        textBlock += `💰 *GRAND TOTAL:* ₹ ${grandTotal}\n`;
+        textBlock += `👥 *Total Customers:* ${groupedRows.length}\n`;
+        textBlock += `---------------------------------\n`;
+        textBlock += `_Generated automatically via Pigmy System._`;
 
         res.json({
             success: true,
             whatsappNumber: mobile,
-            message: finalMessage
+            message: textBlock
         });
 
     } catch (error) {
